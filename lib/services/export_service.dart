@@ -9,12 +9,15 @@ import '../models/drift_log_entry.dart';
 import '../utils/date_utils.dart';
 
 class ExportService {
-  Future<void> exportToday() async {
-    final today = todayKey();
-    final entry = await DatabaseHelper.instance.getEntryForDate(today);
-    final log = await DatabaseHelper.instance.getDriftLogForDate(today);
-    final markdown = '# Drifter — $today\n\n${_dayMarkdown(entry, log)}';
-    await _writeAndShare('drifter-$today.md', markdown);
+  /// Exports a single day, identified by its YYYY-MM-DD key. Defaults to
+  /// today, but any past date works — useful if a day's wrap-up gets missed
+  /// and you only get to it after the day-cycle has rolled over.
+  Future<void> exportDay([String? date]) async {
+    final day = date ?? todayKey();
+    final entry = await DatabaseHelper.instance.getEntryForDate(day);
+    final log = await DatabaseHelper.instance.getDriftLogForDate(day);
+    final markdown = '# Drifter — $day\n\n${_dayMarkdown(entry, log)}';
+    await _writeAndShare('drifter-$day.md', markdown);
   }
 
   Future<void> exportWeek() async {

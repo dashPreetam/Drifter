@@ -9,7 +9,11 @@ import '../utils/date_utils.dart';
 import '../widgets/fade_in.dart';
 
 class SummaryScreen extends StatefulWidget {
-  const SummaryScreen({super.key});
+  /// The YYYY-MM-DD day to show. Defaults to today (by the app's day-cycle,
+  /// which rolls over at 4 AM rather than midnight).
+  final String? date;
+
+  const SummaryScreen({super.key, this.date});
 
   @override
   State<SummaryScreen> createState() => _SummaryScreenState();
@@ -17,6 +21,7 @@ class SummaryScreen extends StatefulWidget {
 
 class _SummaryScreenState extends State<SummaryScreen> {
   final _exportService = ExportService();
+  late String _date = widget.date ?? todayKey();
   DailyEntry? _entry;
   List<DriftLogEntry> _driftLog = [];
   bool _exporting = false;
@@ -28,14 +33,28 @@ class _SummaryScreenState extends State<SummaryScreen> {
   }
 
   Future<void> _load() async {
-    final today = todayKey();
-    final entry = await DatabaseHelper.instance.getEntryForDate(today);
-    final log = await DatabaseHelper.instance.getDriftLogForDate(today);
+    final entry = await DatabaseHelper.instance.getEntryForDate(_date);
+    final log = await DatabaseHelper.instance.getDriftLogForDate(_date);
     if (!mounted) return;
     setState(() {
       _entry = entry;
       _driftLog = log;
     });
+  }
+
+  Future<void> _pickDate() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: DateTime.parse(_date),
+      firstDate: DateTime(2025),
+      lastDate: DateTime.parse(todayKey()),
+    );
+    if (picked == null) return;
+    setState(() {
+      _date = formatDate(picked);
+      _entry = null;
+    });
+    await _load();
   }
 
   Future<void> _export(Future<void> Function() action) async {
@@ -52,12 +71,22 @@ class _SummaryScreenState extends State<SummaryScreen> {
     final entry = _entry;
     return Scaffold(
       extendBodyBehindAppBar: true,
-      appBar: AppBar(title: const Text('Day Wrap-Up')),
+      appBar: AppBar(
+        title: const Text('Day Wrap-Up'),
+        actions: [
+          IconButton(
+            onPressed: _pickDate,
+            icon: const Icon(Icons.calendar_month),
+            tooltip: 'View a different day',
+          ),
+        ],
+      ),
       body: ImmersiveBackground(
         child: entry == null
             ? const Center(child: CircularProgressIndicator())
             : SafeArea(
                 child: FadeIn(
+                  key: ValueKey(_date),
                   child: ListView(
                     padding: const EdgeInsets.fromLTRB(20, 8, 20, 32),
                     children: [
@@ -71,14 +100,21 @@ class _SummaryScreenState extends State<SummaryScreen> {
                           Expanded(
                             child: Text(
                               entry.identity?.label ??
-                                  'No identity set today',
+                                  'No identity set that day',
                               style: Theme.of(context).textTheme.headlineSmall
                                   ?.copyWith(fontWeight: FontWeight.w600),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 24),
+                      const SizedBox(height: 4),
+                      Text(
+                        _date == todayKey() ? '$_date (today)' : _date,
+                        style: Theme.of(
+                          context,
+                        ).textTheme.bodySmall?.copyWith(color: AppColors.accent),
+                      ),
+                      const SizedBox(height: 20),
                       if (entry.hasGoogle)
                         _Section(
                           title: 'Google',
@@ -137,13 +173,27 @@ class _SummaryScreenState extends State<SummaryScreen> {
                               '${item.timestamp} — ${item.text}',
                           ],
                         ),
+                      if (!entry.hasGoogle &&
+                          !entry.hasFitness &&
+                          !entry.hasSleep &&
+                          !entry.hasMusic &&
+                          _driftLog.isEmpty)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 12),
+                          child: Text(
+                            'No check-ins logged that day.',
+                            style: Theme.of(context).textTheme.bodyMedium,
+                          ),
+                        ),
                       const SizedBox(height: 8),
                       FilledButton.icon(
                         onPressed: _exporting
                             ? null
-                            : () => _export(_exportService.exportToday),
+                            : () => _export(
+                                () => _exportService.exportDay(_date),
+                              ),
                         icon: const Icon(Icons.today),
-                        label: const Text('Export Today'),
+                        label: const Text('Export This Day'),
                       ),
                       const SizedBox(height: 12),
                       OutlinedButton.icon(
